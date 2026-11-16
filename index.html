@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>運動記録</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#22252a; --sub:#6b7280;
+    --line:#e2e5ea; --accent:#2e9e5b; --accent-dark:#237a45;
+    --accent-soft:#e7f6ee; --warn:#c0392b; --warn-soft:#fdecea;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  .wrap{ max-width:560px; margin:0 auto; padding:16px 14px 40px; }
+  header h1{ font-size:22px; margin:6px 0 12px; }
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:16px; margin-bottom:14px; }
+  .panel h2{ font-size:16px; margin:0 0 10px; }
+  .note{ color:var(--sub); font-size:13px; line-height:1.6; }
+  .msg{ font-size:13px; margin-top:8px; min-height:1em; }
+  .msg.err{ color:var(--warn); }
+  label{ display:block; font-size:13px; color:var(--sub); margin-bottom:6px; }
+  input[type="password"], input[type="text"]{
+    width:100%; padding:11px 12px; font-size:15px; border:1px solid var(--line);
+    border-radius:10px; background:#fff; }
+  .btn{ padding:10px 16px; font-size:14px; border:1px solid var(--line); border-radius:10px;
+    background:#fff; color:var(--ink); cursor:pointer; }
+  .btn.primary{ background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; }
+  .btn:disabled{ opacity:.45; cursor:default; }
+  .banner{ border-radius:10px; padding:10px 12px; font-size:14px; margin-bottom:12px;
+    background:var(--accent-soft); }
+  .banner.err{ background:var(--warn-soft); color:var(--warn); }
+  .banner:empty{ display:none; }
+
+  /* 今日のボタン */
+  .today-label{ font-size:15px; color:var(--sub); margin-bottom:10px; text-align:center; }
+  .bigbtn{ width:100%; padding:24px 12px; font-size:22px; font-weight:800; border-radius:16px;
+    border:2px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer;
+    -webkit-tap-highlight-color:transparent; }
+  .bigbtn:active{ background:var(--accent-dark); }
+  .bigbtn.done{ background:var(--accent-soft); color:var(--accent-dark); }
+  .bigbtn:disabled{ opacity:.55; }
+  .savestatus{ text-align:center; font-size:13px; color:var(--sub); margin-top:10px; min-height:1.2em; }
+  .savestatus.err{ color:var(--warn); }
+
+  /* カレンダー */
+  .cal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .cal-title{ font-size:17px; font-weight:700; }
+  table.cal{ width:100%; border-collapse:separate; border-spacing:3px; }
+  table.cal th{ font-size:12px; color:var(--sub); font-weight:600; padding:4px 0; }
+  table.cal th.sun{ color:#d66; } table.cal th.sat{ color:#66d; }
+  table.cal td{ text-align:center; padding:11px 0; font-size:15px; border-radius:9px;
+    background:#fbfbfc; user-select:none; }
+  table.cal td.clickable{ cursor:pointer; }
+  table.cal td.clickable:active{ background:#eef1f4; }
+  table.cal td.done{ background:var(--accent); color:#fff; font-weight:800; }
+  table.cal td.today{ box-shadow:inset 0 0 0 2px var(--ink); }
+  table.cal td.future{ color:#c3c8cf; background:transparent; }
+  table.cal td.empty{ background:transparent; }
+
+  /* 集計 */
+  .stats{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .stat{ flex:1 1 100px; background:#fbfbfc; border:1px solid var(--line); border-radius:10px;
+    padding:10px; text-align:center; }
+  .stat .num{ font-size:20px; font-weight:800; }
+  .stat .cap{ font-size:12px; color:var(--sub); margin-top:2px; }
+  .stats-range{ font-size:12px; color:var(--sub); margin-top:8px; }
+  .kv div{ margin-bottom:6px; font-size:14px; }
+  .kv b{ display:inline-block; min-width:5.5em; color:var(--sub); font-weight:600; }
+  .foot{ text-align:center; color:var(--sub); font-size:12px; margin-top:18px; line-height:1.7; }
+  a{ color:var(--accent-dark); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🏃 運動記録</h1>
+  </header>
+
+  <div id="globalMsg"></div>
+
+  <!-- 未接続：接続パネル -->
+  <section id="view-connect" style="display:none">
+    <div class="panel">
+      <h2>GitHub に接続</h2>
+      <p class="note">データ置き場（リポジトリ <b>exercise-log</b>）とつなぐため、
+      専用のアクセストークンを1回だけ入力します。トークンはこの端末のブラウザ内にだけ保存され、
+      コードやリポジトリには含まれません。</p>
+      <label>Fine-grained Personal Access Token</label>
+      <input type="password" id="tokenInput" placeholder="github_pat_…" autocomplete="off">
+      <div style="height:10px"></div>
+      <button class="btn primary" onclick="connect()">接続</button>
+      <div class="msg" id="connectMsg"></div>
+      <p class="note" style="margin-top:14px"><b>トークンの作り方</b></p>
+      <ol class="note">
+        <li>GitHub にログイン → 右上のアイコン → <b>Settings</b></li>
+        <li>左下の <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Fine-grained tokens</b> → <b>Generate new token</b></li>
+        <li>Repository access で <b>Only select repositories</b> を選び、<b>exercise-log</b> だけを指定</li>
+        <li>Permissions → Repository permissions → <b>Contents</b> を <b>Read and write</b> に設定</li>
+        <li>発行されたトークンを、上の欄に貼り付けて「接続」</li>
+      </ol>
+      <p class="note">※ Webコミック管理で使っているトークンは、リポジトリを <b>webcomic</b> だけに
+      絞って発行した場合は exercise-log には使えません。その場合は上の手順で
+      exercise-log 用に新しく発行してください（発行時に両方のリポジトリを選ぶこともできます）。</p>
+    </div>
+  </section>
+
+  <div id="mainUi" style="display:none">
+    <!-- 今日の記録 -->
+    <div class="panel">
+      <div class="today-label" id="todayLabel">読み込み中…</div>
+      <button class="bigbtn" id="todayBtn" onclick="toggleToday()" disabled>読み込み中…</button>
+      <div class="savestatus" id="saveStatus"></div>
+      <p class="note" style="text-align:center; margin-bottom:0">
+        ボタンはトグル式です。記録済みの日に押すと取り消します。</p>
+    </div>
+
+    <!-- カレンダー -->
+    <div class="panel">
+      <div class="cal-head">
+        <button class="btn" onclick="moveMonth(-1)">◀ 前月</button>
+        <div class="cal-title" id="calTitle">-</div>
+        <button class="btn" id="nextMonthBtn" onclick="moveMonth(1)">翌月 ▶</button>
+      </div>
+      <table class="cal">
+        <thead><tr>
+          <th class="sun">日</th><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th><th class="sat">土</th>
+        </tr></thead>
+        <tbody id="calBody"></tbody>
+      </table>
+      <div id="monthStats"></div>
+      <p class="note" style="margin-bottom:0">日付をタップすると、その日の記録を付けたり消したりできます（今日以前のみ）。押し忘れの修正に使えます。</p>
+    </div>
+
+    <!-- 全期間 -->
+    <div class="panel">
+      <h2>全期間の集計</h2>
+      <div id="totalStats"></div>
+    </div>
+
+    <!-- 設定 -->
+    <div class="panel">
+      <h2>同期（GitHub）</h2>
+      <div class="kv">
+        <div><b>接続状態</b><span id="setConn">-</span></div>
+        <div><b>データ置き場</b><a href="https://github.com/mbrbjjkb-jpg/exercise-log" target="_blank" rel="noopener">exercise-log</a></div>
+      </div>
+      <label>トークンの変更（再入力）</label>
+      <input type="password" id="tokenChange" placeholder="github_pat_…" autocomplete="off">
+      <div style="height:8px"></div>
+      <button class="btn" onclick="changeToken()">トークンを変更して再接続</button>
+      <span style="display:inline-block; width:8px"></span>
+      <button class="btn" onclick="disconnect()">接続解除</button>
+      <div class="msg" id="connMsg"></div>
+      <p class="note">トークンはこの端末のブラウザ内にだけ保存されています。
+      接続解除するとこの端末からトークンが消えます（データ自体は GitHub に残ります）。</p>
+    </div>
+  </div>
+
+  <p class="foot">運動記録<br>データ保存：GitHub（exercise-log）</p>
+</div>
+
+<script>
+"use strict";
+// ===== 定数 =====
+const OWNER = "mbrbjjkb-jpg";
+const DATA_REPO = "exercise-log";
+const LS_KEY = "exercise-log-app-v1";
+const DATA_PATH = "data/exercise.json";
+const API = "https://api.github.com/repos/" + OWNER + "/" + DATA_REPO + "/contents/";
+
+// ===== 状態 =====
+let token = localStorage.getItem(LS_KEY) || "";
+let store = null;     // {data:{version, days:[...]}, sha}
+let busy = false;
+let viewYear = 0, viewMonth = 0; // 表示中のカレンダー（月は 1..12）
+
+// ===PURE-BEGIN===
+// 日付は "YYYY-MM-DD" 文字列で扱い、計算は UTC ミリ秒に寄せて
+// タイムゾーンや夏時間の影響を受けないようにする。
+function parseDay(s){
+  const p = s.split("-");
+  return Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+}
+function fmtDay(t){
+  const d = new Date(t);
+  return d.getUTCFullYear() + "-" +
+    String(d.getUTCMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getUTCDate()).padStart(2, "0");
+}
+// from〜to（両端含む）の範囲について運動日数などを数える
+function rangeStats(days, from, to){
+  const set = new Set(days);
+  let total = 0, done = 0;
+  for(let t = parseDay(from); t <= parseDay(to); t += 86400000){
+    total++;
+    if(set.has(fmtDay(t))) done++;
+  }
+  return { from: from, to: to, done: done, missed: total - done, total: total,
+           rate: total ? Math.round(done * 1000 / total) / 10 : 0 };
+}
+// 表示中の月の集計。分母はその月の経過日数（過去月は全日、今月は今日まで）。
+// ただし最初の記録日より前は数えない。数える日が無ければ null。
+function monthStats(days, year, month, todayS){
+  if(!days || !days.length) return null;
+  const firstS = days[0];
+  let from = fmtDay(Date.UTC(year, month - 1, 1));
+  let to = fmtDay(Date.UTC(year, month, 0));
+  if(from < firstS) from = firstS;
+  if(to > todayS) to = todayS;
+  if(from > to) return null;
+  return rangeStats(days, from, to);
+}
+// 全期間の集計（最初の記録日〜今日）
+function totalStats(days, todayS){
+  if(!days || !days.length) return null;
+  return rangeStats(days, days[0], todayS);
+}
+// ===PURE-END===
+
+// JST の「今日」を YYYY-MM-DD で返す
+function todayStr(){
+  return new Intl.DateTimeFormat("en-CA",
+    { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+function daysArr(){ return store && store.data ? (store.data.days || []) : []; }
+function hasDay(s){ return daysArr().indexOf(s) >= 0; }
+
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"]/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+}
+function globalMsg(html, kind){
+  const el = document.getElementById("globalMsg");
+  el.innerHTML = html ? '<div class="banner ' + (kind || "") + '">' + html + "</div>" : "";
+}
+function setStatus(t, isErr){
+  const el = document.getElementById("saveStatus");
+  el.textContent = t || "";
+  el.className = "savestatus" + (isErr ? " err" : "");
+}
+function fmtJp(s){ // "2026-11-16" -> "11月16日"
+  const p = s.split("-");
+  return Number(p[1]) + "月" + Number(p[2]) + "日";
+}
+
+// ===== GitHub Contents API =====
+class GhError extends Error {
+  constructor(status, message){ super(message || ("HTTP " + status)); this.status = status; }
+}
+async function ghFetch(path, opts){
+  opts = opts || {};
+  const headers = Object.assign({
+    "Authorization": "Bearer " + token,
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28"
+  }, opts.headers || {});
+  const res = await fetch(API + path, Object.assign({}, opts, {headers}));
+  if(!res.ok) throw new GhError(res.status, "GitHub API " + res.status + " (" + path + ")");
+  return res;
+}
+function b64encodeUtf8(str){
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  const CHUNK = 0x8000;
+  for(let i = 0; i < bytes.length; i += CHUNK){
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+function b64decodeUtf8(b64){
+  const bin = atob(String(b64).replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+async function ghGetJson(path){
+  const res = await ghFetch(path);
+  const j = await res.json();
+  return { data: JSON.parse(b64decodeUtf8(j.content)), sha: j.sha };
+}
+async function ghPutJson(path, dataObj, sha, message){
+  const body = { message: message, content: b64encodeUtf8(JSON.stringify(dataObj, null, 1)) };
+  if(sha) body.sha = sha;
+  const res = await ghFetch(path, { method: "PUT", body: JSON.stringify(body) });
+  const j = await res.json();
+  return j.content && j.content.sha ? j.content.sha : null;
+}
+function isAuthError(e){ return e instanceof GhError && (e.status === 401 || e.status === 403); }
+function normalizeData(d){
+  const days = (d && Array.isArray(d.days)) ? d.days.filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s)) : [];
+  return { version: 1, days: Array.from(new Set(days)).sort() };
+}
+
+// ===== 保存（楽観的更新＋競合時1回リトライ＋失敗時ロールバック） =====
+async function saveData(mutate, message){
+  if(busy){ setStatus("保存中です。少し待ってください", false); return false; }
+  busy = true;
+  const snapshot = JSON.stringify(store.data);
+  mutate(store.data);
+  renderAll();
+  setStatus("保存中…", false);
+  try {
+    store.sha = await ghPutJson(DATA_PATH, store.data, store.sha, message);
+    busy = false;
+    setStatus("保存しました", false);
+    return true;
+  } catch(e) {
+    if(e instanceof GhError && (e.status === 409 || e.status === 422)){
+      // sha 不一致：最新を取り直してから、同じ変更を1回だけやり直す
+      try {
+        const fresh = await ghGetJson(DATA_PATH);
+        const draft = normalizeData(fresh.data);
+        mutate(draft);
+        store = { data: draft, sha: fresh.sha };
+        store.sha = await ghPutJson(DATA_PATH, store.data, store.sha, message);
+        renderAll();
+        busy = false;
+        setStatus("保存しました", false);
+        return true;
+      } catch(e2) { e = e2; }
+    }
+    store.data = JSON.parse(snapshot); // 失敗したら表示も元に戻す
+    renderAll();
+    busy = false;
+    if(isAuthError(e)){
+      globalMsg("トークンが無効か期限切れのようです。下の「同期（GitHub）」でトークンを再入力するか、一度接続解除してから新しいトークンで接続し直してください。", "err");
+      setStatus("保存に失敗しました", true);
+    } else {
+      setStatus("保存に失敗しました（" + e.message + "）。通信状態を確認して、もう一度お試しください", true);
+    }
+    return false;
+  }
+}
+
+// ===== 操作 =====
+async function toggleDay(dateStr){
+  if(!store) return;
+  if(dateStr > todayStr()) return; // 未来日は対象外
+  const adding = !hasDay(dateStr);
+  await saveData(d => {
+    const i = d.days.indexOf(dateStr);
+    if(i >= 0) d.days.splice(i, 1);
+    else { d.days.push(dateStr); d.days.sort(); }
+  }, "exercise: " + (adding ? "record " : "unrecord ") + dateStr);
+}
+function toggleToday(){ toggleDay(todayStr()); }
+function moveMonth(delta){
+  let y = viewYear, m = viewMonth + delta;
+  if(m < 1){ m = 12; y--; }
+  if(m > 12){ m = 1; y++; }
+  const t = todayStr().split("-");
+  if(y > Number(t[0]) || (y === Number(t[0]) && m > Number(t[1]))) return; // 今月より先には行かない
+  viewYear = y; viewMonth = m;
+  renderCalendar();
+}
+
+// ===== 描画 =====
+function renderAll(){
+  renderToday();
+  renderCalendar();
+  renderTotals();
+  const sc = document.getElementById("setConn");
+  if(sc) sc.textContent = token ? "接続中" : "未接続";
+}
+function renderToday(){
+  const t = todayStr();
+  const p = t.split("-");
+  const dow = ["日","月","火","水","木","金","土"][new Date(parseDay(t)).getUTCDay()];
+  document.getElementById("todayLabel").textContent =
+    Number(p[0]) + "年" + Number(p[1]) + "月" + Number(p[2]) + "日（" + dow + "）";
+  const btn = document.getElementById("todayBtn");
+  const done = hasDay(t);
+  btn.disabled = !store || busy;
+  btn.className = "bigbtn" + (done ? " done" : "");
+  btn.textContent = done ? "✓ 今日は運動済み（押すと取り消し）" : "今日は運動した！";
+}
+function renderCalendar(){
+  const t = todayStr();
+  const days = daysArr();
+  const set = new Set(days);
+  document.getElementById("calTitle").textContent = viewYear + "年" + viewMonth + "月";
+  const tp = t.split("-");
+  const atCurrent = (viewYear === Number(tp[0]) && viewMonth === Number(tp[1]));
+  document.getElementById("nextMonthBtn").disabled = atCurrent;
+  const firstDow = new Date(Date.UTC(viewYear, viewMonth - 1, 1)).getUTCDay();
+  const dim = new Date(Date.UTC(viewYear, viewMonth, 0)).getUTCDate();
+  let html = "", row = "";
+  const pushRow = () => { html += "<tr>" + row + "</tr>"; row = ""; };
+  for(let i = 0; i < firstDow; i++) row += '<td class="empty"></td>';
+  for(let d = 1; d <= dim; d++){
+    const s = viewYear + "-" + String(viewMonth).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+    const cls = [];
+    if(set.has(s)) cls.push("done");
+    if(s === t) cls.push("today");
+    if(s > t) cls.push("future"); else cls.push("clickable");
+    const oc = s > t ? "" : ' onclick="toggleDay(\'' + s + '\')"';
+    row += '<td class="' + cls.join(" ") + '"' + oc + ">" + d + "</td>";
+    if((firstDow + d) % 7 === 0) pushRow();
+  }
+  if(row){ while(row.split("<td").length - 1 < 7) row += '<td class="empty"></td>'; pushRow(); }
+  document.getElementById("calBody").innerHTML = html;
+  // 月次集計
+  const ms = document.getElementById("monthStats");
+  const st = monthStats(days, viewYear, viewMonth, t);
+  if(!days.length){
+    ms.innerHTML = '<p class="note" style="margin-top:12px">まだ記録がありません。運動したら上のボタンを押してください。</p>';
+  } else if(!st){
+    ms.innerHTML = '<p class="note" style="margin-top:12px">この月は記録開始前です。</p>';
+  } else {
+    ms.innerHTML = statsHtml(st);
+  }
+}
+function renderTotals(){
+  const el = document.getElementById("totalStats");
+  const st = totalStats(daysArr(), todayStr());
+  if(!st){
+    el.innerHTML = '<p class="note">まだ記録がありません。</p>';
+    return;
+  }
+  el.innerHTML = statsHtml(st);
+}
+function statsHtml(st){
+  return '<div class="stats">' +
+    '<div class="stat"><div class="num">' + st.done + '日</div><div class="cap">運動した日</div></div>' +
+    '<div class="stat"><div class="num">' + st.missed + '日</div><div class="cap">していない日</div></div>' +
+    '<div class="stat"><div class="num">' + st.rate + '%</div><div class="cap">実施率</div></div>' +
+    '</div><div class="stats-range">集計範囲：' + fmtJp(st.from) + " 〜 " + fmtJp(st.to) + "</div>";
+}
+
+// ===== 接続まわり =====
+function showMain(){
+  document.getElementById("view-connect").style.display = "none";
+  document.getElementById("mainUi").style.display = "";
+}
+function showConnect(msg, isErr){
+  document.getElementById("view-connect").style.display = "";
+  document.getElementById("mainUi").style.display = "none";
+  if(msg){
+    const m = document.getElementById("connectMsg");
+    m.textContent = msg;
+    m.className = "msg" + (isErr ? " err" : "");
+  }
+}
+async function loadAll(){
+  const fresh = await ghGetJson(DATA_PATH);
+  store = { data: normalizeData(fresh.data), sha: fresh.sha };
+}
+async function initLoad(){
+  if(!token){ showConnect("", false); return; }
+  try {
+    await loadAll();
+  } catch(e) {
+    if(e instanceof GhError && e.status === 404){
+      // データファイルがまだ無い場合は空で開始する（初回保存で作られる）
+      store = { data: { version: 1, days: [] }, sha: null };
+    } else if(isAuthError(e)){
+      showConnect("トークンが無効か期限切れのようです。新しいトークンを入力してください。", true);
+      return;
+    } else {
+      showConnect("読み込みに失敗しました（" + e.message + "）。通信状態を確認して、ページを再読み込みしてください。", true);
+      return;
+    }
+  }
+  const t = todayStr().split("-");
+  viewYear = Number(t[0]); viewMonth = Number(t[1]);
+  showMain();
+  renderAll();
+}
+async function connect(){
+  const input = document.getElementById("tokenInput");
+  const v = input.value.trim();
+  const m = document.getElementById("connectMsg");
+  if(!v){ m.textContent = "トークンを入力してください。"; m.className = "msg err"; return; }
+  token = v;
+  m.textContent = "接続を確認しています…"; m.className = "msg";
+  try {
+    await loadAll();
+  } catch(e) {
+    if(e instanceof GhError && e.status === 404){
+      store = { data: { version: 1, days: [] }, sha: null };
+    } else {
+      token = "";
+      m.textContent = "接続できませんでした（" + e.message + "）。トークンと対象リポジトリの設定を確認してください。";
+      m.className = "msg err";
+      return;
+    }
+  }
+  localStorage.setItem(LS_KEY, token);
+  input.value = "";
+  const t = todayStr().split("-");
+  viewYear = Number(t[0]); viewMonth = Number(t[1]);
+  showMain();
+  renderAll();
+  globalMsg("接続しました。", "");
+}
+async function changeToken(){
+  const input = document.getElementById("tokenChange");
+  const v = input.value.trim();
+  const m = document.getElementById("connMsg");
+  if(!v){ m.textContent = "新しいトークンを入力してください。"; m.className = "msg err"; return; }
+  const old = token;
+  token = v;
+  try {
+    await loadAll();
+    localStorage.setItem(LS_KEY, token);
+    input.value = "";
+    m.textContent = "トークンを変更しました。"; m.className = "msg";
+    renderAll();
+  } catch(e) {
+    token = old;
+    m.textContent = "変更できませんでした（" + e.message + "）。前のトークンのままになっています。";
+    m.className = "msg err";
+  }
+}
+function disconnect(){
+  localStorage.removeItem(LS_KEY);
+  token = "";
+  store = null;
+  showConnect("接続を解除しました。", false);
+}
+
+// 起動
+initLoad();
+</script>
+</body>
+</html>
