@@ -67,6 +67,8 @@
   .stat .num{ font-size:20px; font-weight:800; }
   .stat .cap{ font-size:12px; color:var(--sub); margin-top:2px; }
   .stats-range{ font-size:12px; color:var(--sub); margin-top:8px; }
+  .year-head{ font-size:15px; font-weight:700; margin:16px 0 0; }
+  .year-head:first-child{ margin-top:0; }
   .kv div{ margin-bottom:6px; font-size:14px; }
   .kv b{ display:inline-block; min-width:5.5em; color:var(--sub); font-weight:600; }
   .foot{ text-align:center; color:var(--sub); font-size:12px; margin-top:18px; line-height:1.7; }
@@ -134,10 +136,10 @@
       <p class="note" style="margin-bottom:0">日付をタップすると、その日の記録を付けたり消したりできます（今日以前のみ）。押し忘れの修正に使えます。</p>
     </div>
 
-    <!-- 全期間 -->
+    <!-- 年単位 -->
     <div class="panel">
-      <h2>全期間の集計</h2>
-      <div id="totalStats"></div>
+      <h2>年単位の集計</h2>
+      <div id="yearStats"></div>
     </div>
 
     <!-- 設定 -->
@@ -213,10 +215,26 @@ function monthStats(days, year, month, todayS){
   if(from > to) return null;
   return rangeStats(days, from, to);
 }
-// 全期間の集計（最初の記録日〜今日）
-function totalStats(days, todayS){
-  if(!days || !days.length) return null;
-  return rangeStats(days, days[0], todayS);
+// 年単位の集計。最初の記録のある年から今年までを年ごとに並べる（新しい年が先）。
+// 各年の範囲は 1月1日〜12月31日だが、最初の年は最初の記録日から、
+// 今年は今日まで（最初の記録日より前と未来は数えない）。記録が無ければ空配列。
+function yearlyStats(days, todayS){
+  if(!days || !days.length) return [];
+  const firstS = days[0];
+  const firstYear = Number(firstS.slice(0, 4));
+  const thisYear = Number(todayS.slice(0, 4));
+  const out = [];
+  for(let y = thisYear; y >= firstYear; y--){
+    let from = y + "-01-01";
+    let to = y + "-12-31";
+    if(from < firstS) from = firstS;
+    if(to > todayS) to = todayS;
+    if(from > to) continue;
+    const st = rangeStats(days, from, to);
+    st.year = y;
+    out.push(st);
+  }
+  return out;
 }
 // ===PURE-END===
 
@@ -244,6 +262,10 @@ function setStatus(t, isErr){
 function fmtJp(s){ // "2026-11-16" -> "11月16日"
   const p = s.split("-");
   return Number(p[1]) + "月" + Number(p[2]) + "日";
+}
+function fmtJpFull(s){ // "2026-11-16" -> "2026年11月16日"
+  const p = s.split("-");
+  return Number(p[0]) + "年" + Number(p[1]) + "月" + Number(p[2]) + "日";
 }
 
 // ===== GitHub Contents API =====
@@ -361,7 +383,7 @@ function moveMonth(delta){
 function renderAll(){
   renderToday();
   renderCalendar();
-  renderTotals();
+  renderYearly();
   const sc = document.getElementById("setConn");
   if(sc) sc.textContent = token ? "接続中" : "未接続";
 }
@@ -413,21 +435,24 @@ function renderCalendar(){
     ms.innerHTML = statsHtml(st);
   }
 }
-function renderTotals(){
-  const el = document.getElementById("totalStats");
-  const st = totalStats(daysArr(), todayStr());
-  if(!st){
+function renderYearly(){
+  const el = document.getElementById("yearStats");
+  const list = yearlyStats(daysArr(), todayStr());
+  if(!list.length){
     el.innerHTML = '<p class="note">まだ記録がありません。</p>';
     return;
   }
-  el.innerHTML = statsHtml(st);
+  el.innerHTML = list.map(st =>
+    '<div class="year-head">' + st.year + "年</div>" + statsHtml(st, true)
+  ).join("");
 }
-function statsHtml(st){
+function statsHtml(st, fullRange){
+  const f = fullRange ? fmtJpFull : fmtJp;
   return '<div class="stats">' +
     '<div class="stat"><div class="num">' + st.done + '日</div><div class="cap">運動した日</div></div>' +
     '<div class="stat"><div class="num">' + st.missed + '日</div><div class="cap">していない日</div></div>' +
     '<div class="stat"><div class="num">' + st.rate + '%</div><div class="cap">実施率</div></div>' +
-    '</div><div class="stats-range">集計範囲：' + fmtJp(st.from) + " 〜 " + fmtJp(st.to) + "</div>";
+    '</div><div class="stats-range">集計範囲：' + f(st.from) + " 〜 " + f(st.to) + "</div>";
 }
 
 // ===== 接続まわり =====
